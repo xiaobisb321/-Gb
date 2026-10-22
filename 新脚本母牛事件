@@ -1,0 +1,395 @@
+-- ============================================================
+-- Tylox 悬浮窗 & 特效菜单
+-- 放置于 StarterPlayerScripts 或 StarterCharacterScripts 下的 LocalScript
+-- ============================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ============================================================
+-- 1. 屏幕正上方 炫彩实时帧率显示
+-- ============================================================
+local fpsGui = Instance.new("ScreenGui")
+fpsGui.Name = "TyloxFPS"
+fpsGui.IgnoreGuiInset = true
+fpsGui.ResetOnSpawn = false
+fpsGui.Parent = playerGui
+
+local fpsLabel = Instance.new("TextLabel")
+fpsLabel.Size = UDim2.new(0, 240, 0, 48)
+fpsLabel.Position = UDim2.new(0.5, 0, 0, 8)
+fpsLabel.AnchorPoint = Vector2.new(0.5, 0)
+fpsLabel.BackgroundTransparency = 1
+fpsLabel.TextColor3 = Color3.new(1, 1, 1)
+fpsLabel.TextSize = 28
+fpsLabel.Font = Enum.Font.Fantasy
+fpsLabel.Text = "FPS: --"
+fpsLabel.Parent = fpsGui
+
+-- 炫彩渐变（UIGradient）
+local fpsGradient = Instance.new("UIGradient")
+fpsGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+    ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 255, 0)),
+    ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0, 255, 0)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0, 255, 255)),
+    ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0, 0, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 255)),
+})
+fpsGradient.Parent = fpsLabel
+
+-- 让渐变旋转，产生流动炫彩效果
+RunService.RenderStepped:Connect(function()
+    fpsGradient.Rotation = (fpsGradient.Rotation + 1.5) % 360
+end)
+
+-- FPS 计算（每 1 秒刷新一次）
+local frameCount = 0
+local elapsedTime = 0
+RunService.RenderStepped:Connect(function(dt)
+    frameCount = frameCount + 1
+    elapsedTime = elapsedTime + dt
+    if elapsedTime >= 1 then
+        local fps = math.floor(frameCount / elapsedTime + 0.5)
+        fpsLabel.Text = string.format("FPS: %d", fps)
+        frameCount = 0
+        elapsedTime = 0
+    end
+end)
+
+-- ============================================================
+-- 2. Tylox 悬浮窗（可拖动）
+-- ============================================================
+local floatGui = Instance.new("ScreenGui")
+floatGui.Name = "TyloxFloat"
+floatGui.ResetOnSpawn = false
+floatGui.Parent = playerGui
+
+local floatFrame = Instance.new("Frame")
+floatFrame.Size = UDim2.new(0, 140, 0, 44)
+floatFrame.Position = UDim2.new(0, 20, 0, 120)
+floatFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+floatFrame.BorderSizePixel = 0
+floatFrame.Active = true
+floatFrame.Parent = floatGui
+
+local floatCorner = Instance.new("UICorner")
+floatCorner.CornerRadius = UDim.new(0, 10)
+floatCorner.Parent = floatFrame
+
+-- 轻微描边，增加质感
+local floatStroke = Instance.new("UIStroke")
+floatStroke.Thickness = 1
+floatStroke.Color = Color3.fromRGB(80, 80, 100)
+floatStroke.Transparency = 0.3
+floatStroke.Parent = floatFrame
+
+-- 左侧十字架拖动区
+local dragHandle = Instance.new("TextLabel")
+dragHandle.Size = UDim2.new(0, 36, 1, 0)
+dragHandle.Position = UDim2.new(0, 0, 0, 0)
+dragHandle.BackgroundTransparency = 1
+dragHandle.Text = "✕"
+dragHandle.TextColor3 = Color3.fromRGB(255, 255, 255)
+dragHandle.TextSize = 22
+dragHandle.Font = Enum.Font.SourceSansBold
+dragHandle.Parent = floatFrame
+
+-- 标题 "tylox"
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -36, 1, 0)
+titleLabel.Position = UDim2.new(0, 36, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "tylox"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 20
+titleLabel.Font = Enum.Font.Fantasy
+titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+titleLabel.Parent = floatFrame
+
+-- 拖动逻辑（长按十字架）
+local dragging = false
+local dragStart, startPos
+local dragConn
+
+local function startDrag(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = floatFrame.Position
+        if dragConn then dragConn:Disconnect() end
+        dragConn = UserInputService.InputChanged:Connect(function(newInput)
+            if not dragging then return end
+            if newInput.UserInputType == Enum.UserInputType.MouseMovement or newInput.UserInputType == Enum.UserInputType.Touch then
+                local delta = newInput.Position - dragStart
+                floatFrame.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+    end
+end
+
+local function endDrag()
+    dragging = false
+    if dragConn then
+        dragConn:Disconnect()
+        dragConn = nil
+    end
+end
+
+dragHandle.InputBegan:Connect(startDrag)
+dragHandle.InputEnded:Connect(endDrag)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        endDrag()
+    end
+end)
+
+-- ============================================================
+-- 3. 全屏黑色圆角菜单
+-- ============================================================
+local menuGui = Instance.new("ScreenGui")
+menuGui.Name = "TyloxMenu"
+menuGui.ResetOnSpawn = false
+menuGui.Enabled = false
+menuGui.DisplayOrder = 10
+menuGui.Parent = playerGui
+
+local menuFrame = Instance.new("Frame")
+menuFrame.Size = UDim2.new(1, 0, 1, 0)
+menuFrame.Position = UDim2.new(0, 0, 0, 0)
+menuFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+menuFrame.BorderSizePixel = 0
+menuFrame.Parent = menuGui
+
+local menuCorner = Instance.new("UICorner")
+menuCorner.CornerRadius = UDim.new(0, 14)
+menuCorner.Parent = menuFrame
+
+-- 菜单左上角 "tylox"
+local menuTitle = Instance.new("TextLabel")
+menuTitle.Size = UDim2.new(0, 200, 0, 48)
+menuTitle.Position = UDim2.new(0, 20, 0, 12)
+menuTitle.BackgroundTransparency = 1
+menuTitle.Text = "tylox"
+menuTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+menuTitle.TextSize = 30
+menuTitle.Font = Enum.Font.Fantasy
+menuTitle.TextXAlignment = Enum.TextXAlignment.Left
+menuTitle.Parent = menuFrame
+
+-- 菜单右上角关闭按钮
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 40, 0, 40)
+closeBtn.Position = UDim2.new(1, -60, 0, 16)
+closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 20
+closeBtn.Font = Enum.Font.SourceSansBold
+closeBtn.Parent = menuFrame
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = closeBtn
+
+closeBtn.MouseButton1Click:Connect(function()
+    menuGui.Enabled = false
+end)
+
+-- ============================================================
+-- 4. 左侧可滑动标签栏
+-- ============================================================
+local tabScroll = Instance.new("ScrollingFrame")
+tabScroll.Size = UDim2.new(0, 110, 1, -110)
+tabScroll.Position = UDim2.new(0, 20, 0, 80)
+tabScroll.BackgroundTransparency = 1
+tabScroll.ScrollBarThickness = 4
+tabScroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+tabScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+tabScroll.Parent = menuFrame
+
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.Padding = UDim.new(0, 8)
+tabLayout.Parent = tabScroll
+
+-- 创建标签按钮
+local function createTab(text)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    btn.BorderSizePixel = 0
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btn.TextSize = 16
+    btn.Font = Enum.Font.SourceSans
+    btn.Parent = tabScroll
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 8)
+    c.Parent = btn
+    return btn
+end
+
+local effectsTab = createTab("特效")
+
+-- 自动调整 ScrollingFrame 画布大小
+tabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    tabScroll.CanvasSize = UDim2.new(0, 0, 0, tabLayout.AbsoluteContentSize.Y + 10)
+end)
+
+-- ============================================================
+-- 5. 右侧内容面板
+-- ============================================================
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, -160, 1, -110)
+contentFrame.Position = UDim2.new(0, 140, 0, 80)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = menuFrame
+
+-- 特效面板（默认隐藏）
+local effectsPanel = Instance.new("Frame")
+effectsPanel.Size = UDim2.new(1, 0, 1, 0)
+effectsPanel.BackgroundTransparency = 1
+effectsPanel.Visible = false
+effectsPanel.Parent = contentFrame
+
+-- “车辆人物抖动”按钮
+local shakeButton = Instance.new("TextButton")
+shakeButton.Size = UDim2.new(0, 220, 0, 50)
+shakeButton.Position = UDim2.new(0, 0, 0, 10)
+shakeButton.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+shakeButton.Text = "车辆人物抖动"
+shakeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+shakeButton.TextSize = 18
+shakeButton.Font = Enum.Font.SourceSansBold
+shakeButton.Parent = effectsPanel
+local shakeCorner = Instance.new("UICorner")
+shakeCorner.CornerRadius = UDim.new(0, 10)
+shakeCorner.Parent = shakeButton
+
+-- 状态说明
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0, 300, 0, 30)
+statusLabel.Position = UDim2.new(0, 0, 0, 70)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "状态：未启动"
+statusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+statusLabel.TextSize = 14
+statusLabel.Font = Enum.Font.SourceSans
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = effectsPanel
+
+-- 点击“特效”标签显示面板
+effectsTab.MouseButton1Click:Connect(function()
+    effectsPanel.Visible = true
+end)
+
+-- ============================================================
+-- 6. 抖动特效（所有角色 & 车辆）
+-- ============================================================
+local shakeActive = false
+local shakeConnection = nil
+local shakeData = {} -- 存储每个部件的原始状态
+
+local SHAKE_SPEED = 12          -- 抖动速度
+local SHAKE_AMPLITUDE = 0.8     -- 上下偏移幅度（Studs）
+local SHAKE_SCALE_Y = 0.3       -- Y 轴缩放幅度（1 ± 0.3 即 0.7 ~ 1.3）
+
+-- 收集所有角色和车辆的主要部件
+local function collectTargets()
+    local targets = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if not obj:IsA("Model") then continue end
+
+        local isCharacter = obj:FindFirstChildOfClass("Humanoid") ~= nil
+        local isVehicle = obj:FindFirstChildOfClass("VehicleSeat") ~= nil
+
+        if isCharacter or isVehicle then
+            local part = obj.PrimaryPart
+                or obj:FindFirstChild("HumanoidRootPart")
+                or obj:FindFirstChildWhichIsA("BasePart", true)
+            if part and part:IsA("BasePart") then
+                targets[part] = {
+                    Size = part.Size,
+                    CFrame = part.CFrame,
+                }
+            end
+        end
+    end
+    return targets
+end
+
+local function startShake()
+    if shakeActive then return end
+    shakeData = collectTargets()
+    if next(shakeData) == nil then
+        statusLabel.Text = "状态：未找到角色或车辆"
+        return
+    end
+
+    shakeActive = true
+    statusLabel.Text = "状态：运行中 ✦"
+    shakeButton.Text = "车辆人物抖动 (开)"
+
+    shakeConnection = RunService.Heartbeat:Connect(function()
+        local t = tick() * SHAKE_SPEED
+        local offsetY = math.sin(t) * SHAKE_AMPLITUDE
+        local scaleY = 1 + math.sin(t) * SHAKE_SCALE_Y
+
+        for part, data in pairs(shakeData) do
+            if part.Parent then
+                part.Size = Vector3.new(data.Size.X, data.Size.Y * scaleY, data.Size.Z)
+                part.CFrame = data.CFrame * CFrame.new(0, offsetY, 0)
+            end
+        end
+    end)
+end
+
+local function stopShake()
+    if not shakeActive then return end
+    shakeActive = false
+    shakeButton.Text = "车辆人物抖动"
+    statusLabel.Text = "状态：已停止"
+
+    if shakeConnection then
+        shakeConnection:Disconnect()
+        shakeConnection = nil
+    end
+
+    -- 恢复原始状态
+    for part, data in pairs(shakeData) do
+        if part.Parent then
+            part.Size = data.Size
+            part.CFrame = data.CFrame
+        end
+    end
+    shakeData = {}
+end
+
+shakeButton.MouseButton1Click:Connect(function()
+    if shakeActive then
+        stopShake()
+    else
+        startShake()
+    end
+end)
+
+-- ============================================================
+-- 7. 点击悬浮窗主体 → 打开菜单
+-- ============================================================
+floatFrame.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    -- 如果点击位置在左侧 36px 的十字架区域内，则忽略（由拖动逻辑处理）
+    local localX = input.Position.X - floatFrame.AbsolutePosition.X
+    if localX <= 36 then return end
+
+    menuGui.Enabled = not menuGui.Enabled
+end)
